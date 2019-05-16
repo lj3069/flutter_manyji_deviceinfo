@@ -19,6 +19,13 @@ import android.text.TextUtils;
 import android.util.DisplayMetrics;
 import android.util.Log;
 
+import java.io.InputStreamReader;
+import java.io.LineNumberReader;
+import java.net.InetAddress;
+import java.net.NetworkInterface;
+import java.util.Enumeration;
+import java.util.Locale;
+
 import io.flutter.plugin.common.MethodCall;
 import io.flutter.plugin.common.MethodChannel;
 import io.flutter.plugin.common.MethodChannel.MethodCallHandler;
@@ -236,21 +243,95 @@ public class FlutterManyjiDeviceinfoPlugin implements MethodCallHandler,PluginRe
    * 获得mac
    */
   private static String getWifimac(Context context) {
+    String macAddress = "";
+		if (Build.VERSION.SDK_INT < 23) {
+			try {
+				if (PackageManager.PERMISSION_GRANTED == context
+						.checkCallingOrSelfPermission("android.permission.ACCESS_WIFI_STATE")) {
+					WifiManager wifiMgr = (WifiManager) context
+							.getSystemService("wifi");
+					WifiInfo wifiInfo = wifiMgr.getConnectionInfo();
+					macAddress = wifiInfo.getMacAddress();
+				}
+			} catch (Exception e) {
+			}
+		}
+
+		if (TextUtils.isEmpty(macAddress)) {
+			try {
+				String str = "";
+				Process pp = Runtime.getRuntime().exec(
+						"cat /sys/class/net/wlan0/address");
+				InputStreamReader ir = new InputStreamReader(
+						pp.getInputStream());
+				LineNumberReader input = new LineNumberReader(ir);
+
+				for (; null != str;) {
+					str = input.readLine();
+					if (!TextUtils.isEmpty(str)) {
+						macAddress = str.trim();
+						break;
+					}
+				}
+			} catch (Exception e) {
+			}
+		}
+
+		if (TextUtils.isEmpty(macAddress)) {
+			macAddress = getMacAddress();
+		}
+
+		if (!TextUtils.isEmpty(macAddress)) {
+			return macAddress.toUpperCase(Locale.getDefault());
+		}
+		if(macAddress == null)macAddress = "";
+		return macAddress;
+  }
+
+  private static String getMacAddress() {
+    String strMacAddr = null;
     try {
-      WifiManager wifiMgr = (WifiManager) context.getSystemService(Context.WIFI_SERVICE);
-      WifiInfo info = (null == wifiMgr ? null : wifiMgr.getConnectionInfo());
-      if (null != info) {
-        String mac =  info.getMacAddress();
-        if(mac == null){
-          mac = "";
+      InetAddress ip = getLocalInetAddress();
+      byte[] b = NetworkInterface.getByInetAddress(ip)
+              .getHardwareAddress();
+      StringBuffer buffer = new StringBuffer();
+      for (int i = 0; i < b.length; i++) {
+        if (i != 0) {
+          buffer.append(':');
         }
-        return mac;
-      } else {
-        return "";
+        String str = Integer.toHexString(b[i] & 0xFF);
+        buffer.append(str.length() == 1 ? 0 + str : str);
+      }
+      strMacAddr = buffer.toString();
+    } catch (Exception e) {
+    }
+    return strMacAddr;
+  }
+
+  private static InetAddress getLocalInetAddress() {
+    InetAddress ip = null;
+    try {
+      Enumeration<NetworkInterface> en_netInterface = NetworkInterface
+              .getNetworkInterfaces();
+      while (en_netInterface.hasMoreElements()) {
+        NetworkInterface ni = (NetworkInterface) en_netInterface
+                .nextElement();
+        Enumeration<InetAddress> en_ip = ni.getInetAddresses();
+        while (en_ip.hasMoreElements()) {
+          ip = en_ip.nextElement();
+          if (!ip.isLoopbackAddress()
+                  && ip.getHostAddress().indexOf(":") == -1)
+            break;
+          else
+            ip = null;
+        }
+        if (ip != null) {
+          break;
+        }
       }
     } catch (Exception e) {
-      return "";
     }
+    return ip;
   }
 
 
